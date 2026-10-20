@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<!-- Zotero Scholar Suite — 模型源管理器 (CC Switch 风格). SPDX-License-Identifier: AGPL-3.0-or-later -->
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>模型源管理 · Zotero Scholar Suite</title>
+<link rel="stylesheet" href="chrome://zoteropdftranslate/content/styles/sourceManager.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">
+    <span class="logo">⚡</span>
+    <div>
+      <div class="title">模型源管理</div>
+      <div class="subtitle">统一管理翻译用的模型 / API 源，一键切换，立即作用于划词翻译、全文翻译等所有翻译</div>
+    </div>
+  </div>
+  <div class="current">当前：<b id="current-name">（未启用）</b><span class="vis" title="全文翻译「图内文字」的位图 OCR 使用的模型源">识图：<b id="vision-name">（跟随当前源）</b></span></div>
+</header>
+
+<div class="toolbar">
+  <div class="dropdown">
+    <button id="btn-add" class="primary">＋ 新增 ▾</button>
+    <div id="preset-menu" class="menu" hidden></div>
+  </div>
+  <button id="btn-dup" title="复制选中的源">复制</button>
+  <button id="btn-del" class="danger" title="删除选中的源">删除</button>
+  <span class="sep"></span>
+  <button id="btn-import" title="从 JSON 文件导入">导入</button>
+  <button id="btn-import-clip" title="从剪贴板中的 JSON 导入">从剪贴板导入</button>
+  <button id="btn-export" title="导出为 JSON 文件">导出</button>
+  <label class="chk"><input type="checkbox" id="export-keys"> 导出时包含 API Key</label>
+  <input type="file" id="file-input" accept=".json,application/json" hidden>
+</div>
+
+<main>
+  <section class="list-pane">
+    <div class="hint">拖动排序 · 双击或点「启用」切换当前源 · 「识图」= 图内文字 OCR 用的源</div>
+    <ul id="profile-list"></ul>
+    <div id="empty" class="empty" hidden>
+      还没有任何模型源。<br>点击上方「＋ 新增」，从预设模板（OpenAI、DeepSeek、Kimi、通义千问、智谱、硅基流动、OpenRouter、Claude、Gemini、Ollama…）快速创建。
+    </div>
+  </section>
+
+  <section class="edit-pane">
+    <form id="editor" autocomplete="off" hidden>
+      <div class="row">
+        <label for="f-name">名称</label>
+        <input id="f-name" required>
+      </div>
+      <div class="row">
+        <label for="f-type">类型</label>
+        <select id="f-type"></select>
+      </div>
+      <div class="row">
+        <label for="f-baseURL">Base URL</label>
+        <input id="f-baseURL" placeholder="https://api.example.com/v1">
+      </div>
+      <div class="row small"><span></span><span id="endpoint-preview" class="muted"></span></div>
+      <div class="row">
+        <label for="f-key">API Key</label>
+        <div class="key-wrap">
+          <input id="f-key" type="password" placeholder="留空表示不修改">
+          <button type="button" id="btn-eye" title="显示/隐藏输入内容">👁</button>
+        </div>
+      </div>
+      <div class="row small"><span></span><span class="muted"><span id="key-state"></span>
+        <label class="chk"><input type="checkbox" id="f-clear-key"> 清除已保存的 Key</label></span></div>
+      <div class="row">
+        <label for="f-model">模型</label>
+        <input id="f-model" placeholder="gpt-4o-mini / deepseek-chat / qwen-plus …">
+      </div>
+      <div class="row two">
+        <label for="f-temperature">温度</label>
+        <input id="f-temperature" type="number" min="0" max="2" step="0.1">
+        <label for="f-maxTokens">max_tokens</label>
+        <input id="f-maxTokens" type="number" min="1" step="1" placeholder="默认">
+      </div>
+      <div class="row">
+        <label for="f-supportsVision">图片输入</label>
+        <label class="chk"><input type="checkbox" id="f-supportsVision"> 支持图片输入（可作为识图模型源，用于全文翻译的图内文字 OCR）</label>
+      </div>
+      <div class="row">
+        <label for="f-visionFormat">图片格式</label>
+        <select id="f-visionFormat"></select>
+      </div>
+      <div class="row">
+        <label for="f-stream">流式输出</label>
+        <label class="chk"><input type="checkbox" id="f-stream"> 划词翻译时边生成边显示（全文翻译不受影响）</label>
+      </div>
+      <details>
+        <summary>高级设置</summary>
+        <div class="row">
+          <label for="f-customParams">自定义参数</label>
+          <textarea id="f-customParams" rows="3" placeholder='JSON 对象，合并进请求体，例如 {"top_p": 0.9}'></textarea>
+        </div>
+        <div class="row">
+          <label for="f-extraHeaders">额外请求头</label>
+          <textarea id="f-extraHeaders" rows="2" placeholder='JSON 对象，例如 {"HTTP-Referer": "https://example.com"}'></textarea>
+        </div>
+        <div class="row">
+          <label for="f-prompt">提示词</label>
+          <textarea id="f-prompt" rows="4" placeholder="留空 = 使用 Translate 的 GPT 默认提示词；自定义时必须包含 ${sourceText}，可用 ${langFrom} ${langTo}"></textarea>
+        </div>
+        <div class="row">
+          <label for="f-notes">备注</label>
+          <input id="f-notes">
+        </div>
+      </details>
+      <div class="actions">
+        <button type="button" id="btn-test">测试连接</button>
+        <button type="button" id="btn-activate" class="primary-outline">启用此源</button>
+        <button type="button" id="btn-test-vision" title="生成一张带英文的小图，发给此源做 OCR">测试识图</button>
+        <button type="button" id="btn-vision" title="指定为全文翻译「图内文字」的识图模型源">设为识图源</button>
+        <span class="grow"></span>
+        <button type="button" id="btn-revert">撤销修改</button>
+        <button type="submit" id="btn-save" class="primary">保存</button>
+      </div>
+      <div id="test-result" class="test-result" hidden></div>
+    </form>
+    <div id="no-selection" class="empty">在左侧选择一个源进行编辑</div>
+  </section>
+</main>
+<footer id="status" class="status"></footer>
+<script src="chrome://zoteropdftranslate/content/sourceManager.js"></script>
+</body>
+</html>

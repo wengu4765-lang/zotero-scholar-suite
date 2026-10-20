@@ -1,0 +1,12 @@
+{
+  "name": "scholar-suite-tests",
+  "private": true,
+  "type": "module",
+  "description": "Node 侧验证：用 pdfjs-dist 跑通全文翻译（图片提取 + HTML 生成）同一套代码",
+  "dependencies": {
+    "@napi-rs/canvas": "^0.1.100",
+    "esbuild": "^0.28.2",
+    "pdfjs-dist": "^5.7.284",
+    "playwright-core": "^1.64.1"
+  }
+}

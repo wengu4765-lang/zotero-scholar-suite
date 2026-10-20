@@ -1,0 +1,31 @@
+# dependencies
+node_modules/
+
+# build outputs
+/build/
+/dist/
+src/*/build/
+test/dist/
+*.xpi
+*.tsbuildinfo
+
+# Ethereal Style (closed-source; downloaded by `build.py --with-style`, never committed)
+/.cache/
+**/ethereal-style/
+**/zotero-style*/
+zotero-style*.xpi
+
+# large test data (see test/fetch-testdata.sh)
+/testdata
+*.pdf
+
+# test outputs, caches, logs
+test/out/
+logs/
+*.log
+__pycache__/
+*.pyc
+.DS_Store
+.env
+.scaffold/
+zotero-cmd.json

@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<!-- Zotero Scholar Suite: hidden engine page for full-text translation (with figures).
+     Uses Zotero's bundled pdf.js. SPDX-License-Identifier: AGPL-3.0-or-later -->
+<html>
+<head>
+<meta charset="utf-8">
+<title>Scholar Suite full-text engine</title>
+<script src="chrome://zoteropdftranslate/content/scripts/fulltextEngine.js"></script>
+<script type="module">
+  const base = "resource://zotero/reader/pdf/";
+  try {
+    const pdfjsLib = await import(base + "build/pdf.mjs");
+    window.ScholarFulltext.setPdfjs(pdfjsLib, {
+      workerSrc: base + "build/pdf.worker.mjs",
+      cMapUrl: base + "web/cmaps/",
+      cMapPacked: true,
+      standardFontDataUrl: base + "web/standard_fonts/",
+      wasmUrl: base + "web/wasm/",
+      iccUrl: base + "web/iccs/",
+      isEvalSupported: false,
+    });
+  } catch (e) {
+    window.ScholarFulltextLoadError = String(e && e.stack || e);
+    console.error(e);
+  }
+</script>
+</head>
+<body></body>
+</html>

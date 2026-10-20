@@ -1,0 +1,540 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Note Relation Graph</title>
+    <script src="chrome://__addonRef__/content/lib/js/d3.v7.min.js"></script>
+    <link rel="stylesheet" href="chrome://global/skin/global.css" />
+    <link rel="stylesheet" href="chrome://zotero-platform/content/zotero.css" />
+    <style>
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        background: var(--material-background);
+      }
+
+      body {
+        display: flex;
+        flex-direction: column;
+      }
+
+      @media (prefers-color-scheme: light) {
+        :root {
+          --text-color: black;
+        }
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --text-color: white;
+        }
+      }
+
+      #toolbar {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 6px 10px;
+        color: var(--text-color);
+        border-bottom: var(--material-panedivider, 1px solid #ccc);
+        flex: 0 0 auto;
+      }
+
+      #toolbar #search {
+        min-width: 140px;
+      }
+
+      #toolbar #spacer {
+        flex: 1 1 auto;
+      }
+
+      #toolbar #status {
+        display: none;
+        opacity: 0.7;
+        font-size: 0.9em;
+      }
+
+      #toolbar #stats {
+        opacity: 0.7;
+        font-size: 0.9em;
+      }
+
+      #unlinked-label {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        white-space: nowrap;
+      }
+
+      #graph-container {
+        position: relative;
+        flex: 1 1 auto;
+        overflow: hidden;
+      }
+
+      #graph-container svg {
+        position: absolute;
+        inset: 0;
+      }
+
+      #empty {
+        display: none;
+        position: absolute;
+        inset: 0;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+        padding: 0 40px;
+        color: var(--text-color);
+        opacity: 0.6;
+        pointer-events: none;
+      }
+
+      #legend {
+        display: none;
+        position: absolute;
+        left: 10px;
+        bottom: 10px;
+        flex-direction: column;
+        gap: 4px;
+        padding: 8px 10px;
+        border-radius: 6px;
+        background: var(--material-sidepane, rgba(127, 127, 127, 0.1));
+        border: var(--material-panedivider, 1px solid #ccc);
+        color: var(--text-color);
+        font-size: 0.9em;
+        pointer-events: none;
+      }
+
+      .legend-row {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+
+      .legend-dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        flex: 0 0 auto;
+      }
+
+      .node:hover {
+        cursor: pointer;
+      }
+
+      .node text {
+        font-size: 11px;
+        user-select: none;
+      }
+
+      .node.dimmed {
+        opacity: 0.15;
+      }
+
+      line.dimmed {
+        opacity: 0.08;
+      }
+
+      svg.many-nodes .node:not(.hl) text {
+        display: none;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="toolbar">
+      <select id="library-select"></select>
+      <label id="unlinked-label">
+        <input type="checkbox" id="show-unlinked" />
+        <span id="unlinked-text"></span>
+      </label>
+      <input type="search" id="search" />
+      <button id="rescan"></button>
+      <span id="status"></span>
+      <span id="spacer"></span>
+      <span id="stats"></span>
+    </div>
+    <div id="graph-container">
+      <div id="empty"></div>
+      <div id="legend"></div>
+    </div>
+    <script>
+      const linkColor = "#e8af59";
+      const vis = {
+        svg: null,
+        gRoot: null,
+        gLink: null,
+        gNode: null,
+        simulation: null,
+        zoom: null,
+        nodes: [],
+        links: [],
+        adjacency: new Map(),
+        nodeSel: null,
+        linkSel: null,
+      };
+      let strings = null;
+      let suppressToolbarEvents = false;
+      let searchQuery = "";
+
+      window.addEventListener("message", (ev) => {
+        const data = ev.data || {};
+        if (data.type === "render") {
+          strings = data.strings;
+          applyStrings();
+          updateToolbar(data);
+          render(data.graph);
+          document.getElementById("stats").textContent = data.stats || "";
+          document.getElementById("rescan").disabled = false;
+        } else if (data.type === "progress") {
+          updateProgress(data);
+        }
+      });
+
+      function applyStrings() {
+        if (!strings) return;
+        document.getElementById("unlinked-text").textContent =
+          strings.showUnlinked;
+        document.getElementById("search").placeholder =
+          strings.searchPlaceholder;
+        const rescan = document.getElementById("rescan");
+        rescan.textContent = strings.rescan;
+        rescan.title = strings.rescanTooltip;
+        document.getElementById("empty").textContent = strings.empty;
+      }
+
+      function updateToolbar(data) {
+        suppressToolbarEvents = true;
+        try {
+          const select = document.getElementById("library-select");
+          select.replaceChildren();
+          const allOption = document.createElement("option");
+          allOption.value = "all";
+          allOption.textContent = strings.allLibraries;
+          select.appendChild(allOption);
+          for (const library of data.libraries || []) {
+            const option = document.createElement("option");
+            option.value = String(library.id);
+            option.textContent = library.name;
+            select.appendChild(option);
+          }
+          select.value = String(data.selectedLibraryID);
+          if (select.selectedIndex < 0) {
+            select.value = "all";
+          }
+          document.getElementById("show-unlinked").checked =
+            !!data.showUnlinked;
+        } finally {
+          suppressToolbarEvents = false;
+        }
+      }
+
+      function postOptions() {
+        if (suppressToolbarEvents) return;
+        const value = document.getElementById("library-select").value;
+        window.postMessage(
+          {
+            type: "setOptions",
+            libraryID: value === "all" ? "all" : parseInt(value),
+            showUnlinked: document.getElementById("show-unlinked").checked,
+          },
+          "*",
+        );
+      }
+
+      document
+        .getElementById("library-select")
+        .addEventListener("change", postOptions);
+      document
+        .getElementById("show-unlinked")
+        .addEventListener("change", postOptions);
+      document.getElementById("rescan").addEventListener("click", () => {
+        document.getElementById("rescan").disabled = true;
+        window.postMessage({ type: "rescan" }, "*");
+      });
+      document.getElementById("search").addEventListener("input", (ev) => {
+        searchQuery = ev.target.value.trim().toLowerCase();
+        applyHighlight(null);
+      });
+
+      function updateProgress(data) {
+        const el = document.getElementById("status");
+        if (!data.total || data.done >= data.total) {
+          el.style.display = "none";
+          el.textContent = "";
+        } else {
+          el.style.display = "inline";
+          el.textContent = data.label || "";
+        }
+      }
+
+      function radius(d) {
+        return Math.min(16, 5 + 2 * Math.sqrt(d.degree || 0));
+      }
+
+      function setup() {
+        if (vis.svg) return;
+        const container = document.getElementById("graph-container");
+        vis.svg = d3.select(container).append("svg");
+
+        vis.svg
+          .append("defs")
+          .append("marker")
+          .attr("id", "arrowhead")
+          .attr("refX", 25)
+          .attr("refY", 6)
+          .attr("orient", "auto-start-reverse")
+          .attr("markerWidth", 20)
+          .attr("markerHeight", 12)
+          .attr("markerUnits", "userSpaceOnUse")
+          .append("path")
+          .attr("d", "M 1 1 L 18 6 L 1 11 Z")
+          .attr("fill", linkColor)
+          .attr("stroke", linkColor);
+
+        vis.gRoot = vis.svg.append("g");
+        vis.gLink = vis.gRoot.append("g").attr("fill", "none");
+        vis.gNode = vis.gRoot.append("g");
+
+        vis.zoom = d3
+          .zoom()
+          .scaleExtent([0.05, 8])
+          .on("zoom", (event) => {
+            vis.gRoot.attr("transform", event.transform);
+          });
+        vis.svg.call(vis.zoom);
+        vis.svg.on("dblclick.zoom", null);
+
+        resize();
+        vis.svg.call(
+          vis.zoom.transform,
+          d3.zoomIdentity.translate(
+            container.clientWidth / 2,
+            container.clientHeight / 2,
+          ),
+        );
+        window.addEventListener("resize", resize);
+      }
+
+      function resize() {
+        const container = document.getElementById("graph-container");
+        vis.svg
+          .attr("width", container.clientWidth)
+          .attr("height", container.clientHeight);
+      }
+
+      function render(graph) {
+        setup();
+        // Preserve positions of surviving nodes across re-renders.
+        const prev = new Map();
+        for (const node of vis.nodes) {
+          prev.set(node.id, node);
+        }
+        if (vis.simulation) {
+          vis.simulation.stop();
+        }
+
+        vis.nodes = graph.nodes.map((d) => {
+          const copy = { ...d };
+          const old = prev.get(d.id);
+          if (old) {
+            copy.x = old.x;
+            copy.y = old.y;
+            copy.vx = old.vx;
+            copy.vy = old.vy;
+          }
+          return copy;
+        });
+        vis.links = graph.links.map((d) => ({ ...d }));
+
+        vis.adjacency = new Map();
+        const addAdjacency = (a, b) => {
+          if (!vis.adjacency.has(a)) {
+            vis.adjacency.set(a, new Set());
+          }
+          vis.adjacency.get(a).add(b);
+        };
+        for (const link of vis.links) {
+          addAdjacency(link.source, link.target);
+          addAdjacency(link.target, link.source);
+        }
+
+        vis.svg.classed("many-nodes", vis.nodes.length > 150);
+
+        const libIDs = Array.from(new Set(vis.nodes.map((d) => d.libID)));
+        const multiLib = libIDs.length > 1;
+        const color = multiLib
+          ? d3.scaleOrdinal(libIDs, d3.schemeTableau10)
+          : () => "#A88F6A";
+        renderLegend(multiLib, libIDs, color);
+
+        vis.simulation = d3
+          .forceSimulation(vis.nodes)
+          .force(
+            "link",
+            d3
+              .forceLink(vis.links)
+              .id((d) => d.id)
+              .distance(60),
+          )
+          .force("charge", d3.forceManyBody().strength(-250))
+          .force("x", d3.forceX().strength(0.05))
+          .force("y", d3.forceY().strength(0.05))
+          .force(
+            "collide",
+            d3.forceCollide().radius((d) => radius(d) + 6),
+          );
+
+        vis.gLink.selectAll("*").remove();
+        vis.linkSel = vis.gLink
+          .selectAll("line")
+          .data(vis.links)
+          .join("line")
+          .attr("stroke", linkColor)
+          .attr("stroke-width", (d) => Math.min(4, Math.sqrt(d.value)))
+          .attr("marker-start", (d) =>
+            d.type === "both" ? "url(#arrowhead)" : "",
+          )
+          .attr("marker-end", "url(#arrowhead)");
+
+        vis.gNode.selectAll("*").remove();
+        vis.nodeSel = vis.gNode
+          .selectAll("g")
+          .data(vis.nodes)
+          .join("g")
+          .attr("class", "node");
+
+        vis.nodeSel
+          .append("circle")
+          .attr("r", radius)
+          .attr("fill", (d) => color(d.libID))
+          .attr("stroke", "#fff")
+          .attr("stroke-width", 1.5);
+
+        vis.nodeSel
+          .append("text")
+          .attr("y", (d) => radius(d) + 12)
+          .attr("text-anchor", "middle")
+          .attr("fill", "var(--text-color)")
+          .attr("stroke", "none")
+          .text((d) => d.shortTitle);
+
+        vis.nodeSel
+          .append("title")
+          .text((d) => (multiLib ? `${d.title}\n${d.libName}` : d.title));
+
+        vis.nodeSel.call(
+          d3
+            .drag()
+            .on("start", dragstarted)
+            .on("drag", dragged)
+            .on("end", dragended),
+        );
+
+        vis.nodeSel
+          .on("mouseover", function (event, d) {
+            d3.select(this).select("text").text(d.title);
+            applyHighlight(d.id);
+          })
+          .on("mouseout", function (event, d) {
+            d3.select(this).select("text").text(d.shortTitle);
+            applyHighlight(null);
+          })
+          .on("click", (event, d) => {
+            window.postMessage(
+              { type: "openNote", isShift: !!event.shiftKey, id: d.id },
+              "*",
+            );
+          });
+
+        vis.simulation.on("tick", ticked);
+
+        document.getElementById("empty").style.display = vis.nodes.length
+          ? "none"
+          : "flex";
+        applyHighlight(null);
+      }
+
+      function ticked() {
+        vis.linkSel
+          .attr("x1", (d) => d.source.x)
+          .attr("y1", (d) => d.source.y)
+          .attr("x2", (d) => d.target.x)
+          .attr("y2", (d) => d.target.y);
+        vis.nodeSel.attr("transform", (d) => `translate(${d.x},${d.y})`);
+      }
+
+      function applyHighlight(hoverID) {
+        if (!vis.nodeSel) return;
+        if (hoverID != null) {
+          const neighbors = vis.adjacency.get(hoverID) || new Set();
+          vis.nodeSel.classed(
+            "hl",
+            (d) => d.id === hoverID || neighbors.has(d.id),
+          );
+          vis.nodeSel.classed(
+            "dimmed",
+            (d) => d.id !== hoverID && !neighbors.has(d.id),
+          );
+          vis.linkSel.classed(
+            "dimmed",
+            (l) => l.source.id !== hoverID && l.target.id !== hoverID,
+          );
+        } else if (searchQuery) {
+          const match = (d) => d.title.toLowerCase().includes(searchQuery);
+          vis.nodeSel.classed("hl", match);
+          vis.nodeSel.classed("dimmed", (d) => !match(d));
+          vis.linkSel.classed(
+            "dimmed",
+            (l) => !match(l.source) && !match(l.target),
+          );
+        } else {
+          vis.nodeSel.classed("hl", false).classed("dimmed", false);
+          vis.linkSel.classed("dimmed", false);
+        }
+      }
+
+      function renderLegend(multiLib, libIDs, color) {
+        const legend = document.getElementById("legend");
+        legend.replaceChildren();
+        if (!multiLib) {
+          legend.style.display = "none";
+          return;
+        }
+        legend.style.display = "flex";
+        const names = new Map(vis.nodes.map((d) => [d.libID, d.libName]));
+        for (const libID of libIDs) {
+          const row = document.createElement("div");
+          row.className = "legend-row";
+          const dot = document.createElement("span");
+          dot.className = "legend-dot";
+          dot.style.background = color(libID);
+          const label = document.createElement("span");
+          label.textContent = names.get(libID) || String(libID);
+          row.append(dot, label);
+          legend.append(row);
+        }
+      }
+
+      function dragstarted(event) {
+        if (!event.active) vis.simulation.alphaTarget(0.3).restart();
+        event.subject.fx = event.subject.x;
+        event.subject.fy = event.subject.y;
+      }
+
+      function dragged(event) {
+        event.subject.fx = event.x;
+        event.subject.fy = event.y;
+      }
+
+      function dragended(event) {
+        if (!event.active) vis.simulation.alphaTarget(0);
+        event.subject.fx = null;
+        event.subject.fy = null;
+      }
+    </script>
+  </body>
+</html>

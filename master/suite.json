@@ -1,0 +1,21 @@
+{
+  "id": "zotero-scholar-suite@hark.local",
+  "name": "Zotero Scholar Suite",
+  "version": "1.1.0",
+  "author": "Zotero Scholar Suite (based on works by windingwind and Polygon/MuiseDestiny)",
+  "homepage": "https://github.com/wengu4765-lang/zotero-scholar-suite",
+  "strict_min_version": "8.0-beta.21",
+  "strict_max_version": "10.*",
+  "variants": {
+    "lite": {
+      "name": "Zotero Scholar Suite",
+      "description": "Better Notes + Translate for Zotero 合一（Lite 版）；新增保留图片的全文翻译（含图内文字翻译）与模型源管理器（含识图模型源）。可与单独安装的官方 Ethereal Style 共存",
+      "update_url": "https://raw.githubusercontent.com/wengu4765-lang/zotero-scholar-suite/main/update.json"
+    },
+    "full": {
+      "name": "Zotero Scholar Suite (Full, local build)",
+      "description": "三合一：Better Notes + Translate for Zotero + Ethereal Style（本地构建，仅供自用）；新增保留图片的全文翻译（含图内文字翻译）与模型源管理器（含识图模型源）",
+      "update_url": "https://localhost/zotero-scholar-suite/update.json"
+    }
+  }
+}
